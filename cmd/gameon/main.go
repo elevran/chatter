@@ -4,106 +4,112 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net/url"
 	"os"
+	"path"
 )
 
+// While we could have incorporated a full featured CLI library, such as github.com/urfave/cli or
+// github.com/spf13/cobra, the added dependency is likely not warranted at this point. A full featured library would,
+// for example, simplify the definition of global and per sub-command flags, or allow defining short and long versions
+// for each option... Since the standard flag package does not support these, we resort to using positional arguments
+// for sub-commands.
+//
+// Quoting https://go-proverbs.github.io: "A little copying is better than a little dependency" ;-)
+//
+
 func main() {
-	//-- general command line flags, applicable for all commands
+	// global flags shared by all sub-commands
 	//
 	// see https://github.com/gameontext/gameon-room-go#get-game-on-id-and-shared-secret for directions
 	// on generating and retrieving the shared secret and id values
-
-	var verbose bool // CLI verbosity, boolean flags (default: false)
+	var verbose bool        // CLI verbosity, boolean flags (default: false)
 	var sharedSecret string // GameOn! shared secret, required. Set in command line or GAMEON_SECRET env-var
-	var identity string // GameOn! identity, required. Set in command line or GAMEON_ID env-var
+	var identity string     // GameOn! identity, required. Set in command line or GAMEON_ID env-var
+	var server urlFlag      // GameOn! server URL
 
-	const verboseDefault, verboseDescription = false, "[CLI verbosity]"
-	flag.BoolVar(&verbose, "v", verboseDefault, verboseDescription)
-	flag.BoolVar(&verbose, "verbose", verboseDefault, verboseDescription)
+	addCommonFlags(&verbose, &sharedSecret, &identity, &server)
 
-	const secretDefault, secretDescription = os.Getenv("GAMEON_SECRET"), "<GameOn! shared secret>"
+	//-- Sub-commands
+	subcommands := []subcommand{deleteRoomSubcommand(), listRoomsSubcommand(), registerRoomSubcommand()}
 
-	// Subcommands
-	countCommand := flag.NewFlagSet("count", flag.ExitOnError)
-	listCommand := flag.NewFlagSet("list", flag.ExitOnError)
+	flag.Parse()
+	err := validateRequiredCommonFlags(verbose, sharedSecret, identity, server.Url())
 
-	// Count subcommand flag pointers
-	// Adding a new choice for --metric of 'substring' and a new --substring flag
-	countTextPtr := countCommand.String("text", "", "Text to parse. (Required)")
-	countMetricPtr := countCommand.String("metric", "chars", "Metric {chars|words|lines|substring}. (Required)")
-	countSubstringPtr := countCommand.String("substring", "", "The substring to be counted. Required for --metric=substring")
-	countUniquePtr := countCommand.Bool("unique", false, "Measure unique values of a metric.")
-
-	// List subcommand flag pointers
-	listTextPtr := listCommand.String("text", "", "Text to parse. (Required)")
-	listMetricPtr := listCommand.String("metric", "chars", "Metric <chars|words|lines>. (Required)")
-	listUniquePtr := listCommand.Bool("unique", false, "Measure unique values of a metric.")
-
-	// Verify that a subcommand has been provided
-	// os.Arg[0] is the main command
-	// os.Arg[1] will be the subcommand
-	if len(os.Args) < 2 {
-		fmt.Println("list or count subcommand is required")
+	if err != nil {
+		usage(err.Error(), subcommands)
 		os.Exit(1)
 	}
 
-	// Switch on the subcommand
-	// Parse the flags for appropriate FlagSet
-	// FlagSet.Parse() requires a set of arguments to parse as input
-	// os.Args[2:] will be all arguments starting after the subcommand at os.Args[1]
-	switch os.Args[1] {
-	case "list":
-		listCommand.Parse(os.Args[2:])
-	case "count":
-		countCommand.Parse(os.Args[2:])
-	default:
-		flag.PrintDefaults()
+	tail := flag.Args() // left-over, unprocessed, positional args
+
+	// verify that a sub-command has been provided (tail[0] is the sub-command)
+	if len(tail) < 1 {
+		usage("A sub-command is required", subcommands)
 		os.Exit(1)
 	}
 
-	// Check which subcommand was Parsed using the FlagSet.Parsed() function. Handle each case accordingly.
-	// FlagSet.Parse() will evaluate to false if no flags were parsed (i.e. the user did not provide any flags)
-	if listCommand.Parsed() {
-		// Required Flags
-		if *listTextPtr == "" {
-			listCommand.PrintDefaults()
-			os.Exit(1)
+	for _, sc := range subcommands {
+		if sc.Keyword() == tail[0] {
+			err := sc.Parse(os.Args[1:]) // tail[1:] will be all arguments following sub-command
+			if err != nil {
+				fmt.Println(err)
+				os.Exit(1)
+			}
+
+			// create the GameOn client
+			err = sc.Process(nil)
+			if err != nil {
+				fmt.Println(err)
+				os.Exit(1)
+			}
+			return // all done, command completed successfully
 		}
-		//Choice flag
-		metricChoices := map[string]bool{"chars": true, "words": true, "lines": true}
-		if _, validChoice := metricChoices[*listMetricPtr]; !validChoice {
-			listCommand.PrintDefaults()
-			os.Exit(1)
-		}
-		// Print
-		fmt.Printf("textPtr: %s, metricPtr: %s, uniquePtr: %t\n", *listTextPtr, *listMetricPtr, *listUniquePtr)
 	}
 
-	if countCommand.Parsed() {
-		// Required Flags
-		if *countTextPtr == "" {
-			countCommand.PrintDefaults()
-			os.Exit(1)
-		}
-		// If the metric flag is substring, the substring flag is required
-		if *countMetricPtr == "substring" && *countSubstringPtr == "" {
-			countCommand.PrintDefaults()
-			os.Exit(1)
-		}
-		//If the metric flag is not substring, the substring flag must not be used
-		if *countMetricPtr != "substring" && *countSubstringPtr != "" {
-			fmt.Println("--substring may only be used with --metric=substring.")
-			countCommand.PrintDefaults()
-			os.Exit(1)
-		}
-		//Choice flag
-		metricChoices := map[string]bool{"chars": true, "words": true, "lines": true, "substring": true}
-		if _, validChoice := metricChoices[*listMetricPtr]; !validChoice {
-			countCommand.PrintDefaults()
-			os.Exit(1)
-		}
-		//Print
-		fmt.Printf("textPtr: %s, metricPtr: %s, substringPtr: %v, uniquePtr: %t\n", *countTextPtr, *countMetricPtr, *countSubstringPtr, *countUniquePtr)
+	// if we got this far, tail[0] did not match any sub-command keyword
+	fmt.Println(os.Args[0], "Unknown sub-command:", tail[0])
+	fmt.Print("Expecting one of ")
+	for _, sc := range subcommands {
+		fmt.Print(sc.Keyword(), " ")
+	}
+	fmt.Println()
+	os.Exit(1)
+}
+
+func addCommonFlags(verbose *bool, secret *string, identity *string, serverUrl *urlFlag) {
+	flag.StringVar(identity, "id", os.Getenv("GAMEON_ID"),
+		"GameOn! identity (required, default: $GAMEON_ID environment variable)")
+	flag.StringVar(secret, "secret", os.Getenv("GAMEON_SECRET"),
+		"GameOn! shared secret (required, default: $GAMEON_SECRET environment variable)")
+	flag.BoolVar(verbose, "d", false, "Enable debug (optional, default: false)")
+	flag.Var(serverUrl, "g", "GameOn! server URL (required)")
+}
+
+// validate that (required) flags have been successfully parsed
+func validateRequiredCommonFlags(verbose bool, secret string, identity string, gos *url.URL) error {
+	if identity == "" {
+		return fmt.Errorf("identity not provided in command line or $GAMEON_ID environment variable")
+	} else if secret == "" {
+		return fmt.Errorf("shared secret not provided in command line or $GAMEON_SECRET environment variable")
+	} else if gos == nil {
+		return fmt.Errorf("no valid URL for GameOn! server")
 	}
 
+	if verbose {
+		fmt.Printf("id:%s secret:%s server:%s verbose:%t\r\n", identity, secret, gos.String(), verbose)
+	}
+
+	return nil
+}
+
+func usage(message string, subcommands []subcommand) {
+	fmt.Println("Error:", message, "\r\n")
+	fmt.Println("Usage:\r\n\t", path.Base(os.Args[0]), "<global flags>", "<sub-command> [sub-command flags]")
+	fmt.Println("\r\nGlobal flags:")
+	flag.PrintDefaults()
+	fmt.Println("\r\nSub-commands:")
+	for _, sc := range subcommands {
+		fmt.Println("  ", sc.Usage())
+	}
 }
