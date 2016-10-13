@@ -8,41 +8,24 @@ import (
 	"regexp"
 )
 
-type handler struct {
+type regexSearch struct {
 	re *regexp.Regexp
 }
 
-func newHandler() (*handler, error) {
+func newProfanityFinder() (*regexSearch, error) {
 	var err error
-	h := &handler{}
+	s := &regexSearch{}
 
-	h.re, err = regexp.Compile("(boogers|snot|poop|shucks|argh)") // our list of nasty words
-	return h, err
+	s.re, err = regexp.Compile("(boogers|snot|poop|shucks|argh)") // our list of nasty words
+	return s, err
 }
 
-func (h *handler) handle(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-
-	if r.Body == nil { // no data -> no profanity found
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
+func (s *regexSearch) Find(r *http.Request) (bool, error) {
 	body, err := ioutil.ReadAll(r.Body)
+
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(err.Error()))
-		return
+		return true, err // be pessimistic on errors
 	}
 
-	if h.re.Match(body) {
-		w.WriteHeader(http.StatusForbidden)
-		_, _ = w.Write([]byte("profanity detected"))
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
+	return s.re.Match(body), nil
 }
