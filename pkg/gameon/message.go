@@ -1,4 +1,4 @@
-package message
+package gameon
 
 import "encoding/json"
 
