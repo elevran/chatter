@@ -1,2 +1,2 @@
-# gothebys
-Auction themed GameOn! room 
+# chatter
+Simple GameOn! chat room to demonstrate DevOps flows 
