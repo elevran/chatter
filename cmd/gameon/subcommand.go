@@ -10,8 +10,8 @@ import (
 
 // The subcommand interface defines methods to allow the main function to work with sub-command generically.
 type subcommand interface {
-	Keyword() string                                // sub-command keyword
-	Usage() string                                  // usage text
+	Keyword() string                               // sub-command keyword
+	Usage() string                                 // usage text
 	Parse([]string) error                          // parse command line arguments
 	Process(Doer, Signer, io.Writer) (bool, error) // do work
 	// Uses the given Doer, Signer and io.Writer (for tracing). if Doer or Signer are nil, will internally
@@ -28,23 +28,20 @@ type subcommand interface {
 
 //-- delete a room by its identifier
 type deleteRoom struct {
-	server   url.URL // GameOn! server
-	gameonID string  // GameOn! id
-	roomID   string  // identifier of room to delete
+	server url.URL // GameOn! server
+	roomID string  // identifier of room to delete
 }
 
 // create a new delete sub-command instance, along with its flags set
-func deleteRoomSubcommand(server url.URL, goid string) *deleteRoom {
+func deleteRoomSubcommand(server url.URL, _ string) *deleteRoom {
 	return &deleteRoom{
-		server:   server,
-		gameonID: goid,
+		server: server,
 	}
 }
 
 // implement GoStringer, mostly for debugging/tracing in verbose mode
 func (del *deleteRoom) GoString() string {
-	return fmt.Sprintf("%s - roomid:%s gameonID:%s server:%s", del.Keyword(), del.roomID, del.gameonID,
-		del.server.String())
+	return fmt.Sprintf("%s - roomid:%s server:%s", del.Keyword(), del.roomID, del.server.String())
 }
 
 // sub-command's keyword
@@ -74,7 +71,7 @@ func (del *deleteRoom) Process(client Doer, auth Signer, trace io.Writer) (bool,
 	fmt.Fprintln(trace, location(), del, "Doer", client, "Signer", auth)
 
 	// validate requirements
-	if del.server.String() == "" || del.gameonID == "" || del.roomID == "" {
+	if del.server.String() == "" || del.roomID == "" {
 		return false, fmt.Errorf("%#v", del)
 	}
 
@@ -98,19 +95,23 @@ func (del *deleteRoom) Process(client Doer, auth Signer, trace io.Writer) (bool,
 
 	_ = authenticator.Sign(req) // TODO: handle error
 	resp, err := httpClient.Do(req)
+	defer resp.Body.Close() // TODO: even if err != nil?
 	if err != nil {
 		fmt.Fprintln(trace, location(), "DELETE.Error", err.Error())
 		return false, err
 	}
 
 	fmt.Fprintln(trace, "Status", resp.StatusCode)
+	switch resp.StatusCode {
+	// XXX handle cases
+	}
 
 	/*defer r.Body.Close()
 	b, e := ioutil.ReadAll(r.Body)
 	if e == nil {
 		body = string(b)
 	}*/
-	/* io.Copy(ioutil.Discard, resp.Body)
+	/* io.Copy(ioutil.Discard, resp.Body) or copy to trace?
 	resp.Body.Close() */
 
 	/*body, err := extractBody(resp)
@@ -136,7 +137,7 @@ func (del *deleteRoom) Process(client Doer, auth Signer, trace io.Writer) (bool,
 		return
 	}*/
 
-	return true, nil
+	return true, nil // TODO figure out return values
 }
 
 //-- list registered rooms by owner and (optionally) name
