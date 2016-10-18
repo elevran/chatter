@@ -2,6 +2,11 @@ package gameon
 
 import "encoding/json"
 
+// MessageCollection is a collection of GameOn! messages
+type MessageCollection struct {
+	Messages []Message `json:"messages"`
+}
+
 // Message is a generic GameOn! message, holding a direction (player, room, ...),
 // a recipient (playerID, roomID, *, ...), and a message-type specific payload.
 type Message struct {
@@ -10,14 +15,14 @@ type Message struct {
 	Payload   json.RawMessage `json:"payload,omitempty"`
 }
 
-// Command is the payload provided for a [client --> mediator --> room] chat/command message.
+// Command is the message payload provided for a [client --> mediator --> room] chat/command message.
 type Command struct {
 	Username string `json:"username,omitempty"`
 	UserID   string `json:"userId,omitempty"`
 	Content  string `json:"content,omitempty"`
 }
 
-// Hello is the payload provided for a [mediator --> room] hello message.
+// Hello is the message payload provided for a [mediator --> room] hello message.
 type Hello struct {
 	Username string `json:"username,omitempty"`
 	UserID   string `json:"userId,omitempty"`
@@ -25,18 +30,18 @@ type Hello struct {
 	Recovery bool   `json:"recovery,omitempty"`
 }
 
-// Goodbye is the payload provided for a [mediator --> room] goodbye message.
+// Goodbye is the message payload provided for a [mediator --> room] goodbye message.
 type Goodbye struct {
 	Username string `json:"username,omitempty"`
 	UserID   string `json:"userId,omitempty"`
 }
 
-// Ack is the payload provided for a [room --> mediator] ack message.
+// Ack is the message payload provided for a [room --> mediator] ack message.
 type Ack struct {
 	Version []int `json:"version,omitempty"`
 }
 
-// Location is the payload provided for a [room --> mediator --> client] location message.
+// Location is the message payload provided for a [room --> mediator --> client] location message.
 type Location struct {
 	Type        string            `json:"type,omitempty"`
 	Name        string            `json:"name,omitempty"`
@@ -47,13 +52,21 @@ type Location struct {
 	Inventory   []string          `json:"roomInventory,omitempty"`
 }
 
-// Chat is the payload provided for a [room --> mediator --> client] chat message.
+// PlayerLocation is the message payload provided for a [room --> mediator --> client] player-location message.
+type PlayerLocation struct {
+	Type    string `json:"type,omitempty"`
+	Content string `json:"content,omitempty"`
+	ExitID  string `json:"exitId,omitempty"`
+	Exit    string `json:"exit,omitempty"`
+}
+
+// Chat is the message payload provided for a [room --> mediator --> client] chat message.
 type Chat struct {
 	Content  Content
 	Bookmark string `json:"bookmark,omitempty"`
 }
 
-// Event is the payload provided for a [room --> mediator --> client] event message.
+// Event is the message payload provided for a [room --> mediator --> client] event message.
 type Event struct {
 	Content  Content
 	Bookmark string `json:"bookmark,omitempty"`
