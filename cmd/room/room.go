@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/elevran/chatter/pkg/gameon"
 )
@@ -45,12 +44,10 @@ func (r *room) hello(resp http.ResponseWriter, req *http.Request) {
 		Direction: "player",
 		Recipient: "*",
 		Payload: jsonMarshal(gameon.Event{
-			ChatEventInfo: gameon.ChatEventInfo{
-				Bookmark: time.Now().UTC().String(),
-				Content: map[string]string{
-					hello.UserID: "Welcome!",
-					"*":          fmt.Sprintf("%s has just entered the room", hello.Username),
-				},
+			Type: "event",
+			Content: map[string]string{
+				hello.UserID: "Welcome!",
+				"*":          fmt.Sprintf("%s has just entered the room", hello.Username),
 			},
 		}),
 	}
@@ -77,12 +74,10 @@ func (r *room) goodbye(resp http.ResponseWriter, req *http.Request) {
 		Direction: "player",
 		Recipient: "*",
 		Payload: jsonMarshal(gameon.Event{
-			ChatEventInfo: gameon.ChatEventInfo{
-				Bookmark: time.Now().UTC().String(),
-				Content: map[string]string{
-					goodbye.UserID: "Farewell!",
-					"*":            fmt.Sprintf("%s has left the room", goodbye.Username),
-				},
+			Type: "event",
+			Content: map[string]string{
+				goodbye.UserID: "Farewell!",
+				"*":            fmt.Sprintf("%s has left the room", goodbye.Username),
 			},
 		}),
 	}
@@ -135,10 +130,9 @@ func (r *room) handleSlash(command gameon.RoomCommand, resp http.ResponseWriter)
 		Direction: "player",
 		Recipient: command.UserID,
 		Payload: jsonMarshal(gameon.Event{
-			ChatEventInfo: gameon.ChatEventInfo{
-				Content: map[string]string{
-					command.UserID: eventContent,
-				},
+			Type: "event",
+			Content: map[string]string{
+				command.UserID: eventContent,
 			},
 		}),
 	}
@@ -151,11 +145,9 @@ func (r *room) handleChat(command gameon.RoomCommand, resp http.ResponseWriter) 
 		Direction: "player",
 		Recipient: "*",
 		Payload: jsonMarshal(gameon.Chat{
-			ChatEventInfo: gameon.ChatEventInfo{
-				Content: map[string]string{
-					"*": command.Content,
-				},
-			},
+			Type:     "chat",
+			Username: command.Username,
+			Content:  command.Content,
 		}),
 	}
 

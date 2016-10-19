@@ -64,41 +64,17 @@ type PlayerLocation struct {
 	Exit    string `json:"exit,omitempty"`
 }
 
-// ChatEventInfo holds the content and bookmark of a chat/event message payload.
-// It is not a complete GameOn message on its own, but rather meant to be embedded within Chat / Event message payloads.
-type ChatEventInfo struct {
-	Content  map[string]string `json:"content,omitempty"`
-	Bookmark string            `json:"bookmark,omitempty"`
-}
-
 // Chat is the message payload provided for a [room --> mediator --> client] chat message.
 type Chat struct {
-	ChatEventInfo
+	Type     string `json:"type,omitempty"`
+	Username string `json:"username,omitempty"`
+	Content  string `json:"content,omitempty"`
+	Bookmark string `json:"bookmark,omitempty"`
 }
 
 // Event is the message payload provided for a [room --> mediator --> client] event message.
 type Event struct {
-	ChatEventInfo
-}
-
-type typedChatEventInfo struct {
-	Type string `json:"type,omitempty"`
-	ChatEventInfo
-}
-
-func (c *Chat) MarshalJSON() ([]byte, error) {
-	t := &typedChatEventInfo{
-		Type:          "chat",
-		ChatEventInfo: c.ChatEventInfo,
-	}
-
-	return json.Marshal(t)
-}
-
-func (e *Event) MarshalJSON() ([]byte, error) {
-	t := &typedChatEventInfo{
-		Type:          "event",
-		ChatEventInfo: e.ChatEventInfo,
-	}
-	return json.Marshal(t)
+	Type     string            `json:"type,omitempty"`
+	Content  map[string]string `json:"content,omitempty"`
+	Bookmark string            `json:"bookmark,omitempty"`
 }
