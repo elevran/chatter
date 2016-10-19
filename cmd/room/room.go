@@ -1,26 +1,20 @@
-//
 package main
 
 import (
 	"encoding/json"
 	"fmt"
-	"io"
-	"io/ioutil"
 	"net/http"
 	"strings"
 	"time"
 )
 
-type room struct {
-}
+type room struct{}
 
 func newChatRoom() *room {
 	return &room{}
 }
 
 func (r *room) hello(resp http.ResponseWriter, req *http.Request) {
-	defer closeRequestBody(req)
-
 	if req.Method != "POST" {
 		resp.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -67,8 +61,6 @@ func (r *room) hello(resp http.ResponseWriter, req *http.Request) {
 }
 
 func (r *room) goodbye(resp http.ResponseWriter, req *http.Request) {
-	defer closeRequestBody(req)
-
 	if req.Method != "POST" {
 		resp.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -100,8 +92,6 @@ func (r *room) goodbye(resp http.ResponseWriter, req *http.Request) {
 }
 
 func (r *room) message(resp http.ResponseWriter, req *http.Request) {
-	defer closeRequestBody(req)
-
 	if req.Method != "POST" {
 		resp.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -179,9 +169,4 @@ func (r *room) sendEvent(recipient, message string, resp http.ResponseWriter) {
 	resp.Header().Set("Content-Type", "application/json")
 	resp.WriteHeader(http.StatusOK)
 	resp.Write(body)
-}
-
-func closeRequestBody(r *http.Request) {
-	io.Copy(ioutil.Discard, r.Body)
-	r.Body.Close()
 }
