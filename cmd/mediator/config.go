@@ -6,7 +6,7 @@ var Flags = []cli.Flag{
 	cli.StringFlag{
 		Name:   "room_id",
 		EnvVar: "ROOM_ID",
-		Value:  "chatter",
+		Value:  "",
 		Usage:  "Game On registration room id",
 	},
 
