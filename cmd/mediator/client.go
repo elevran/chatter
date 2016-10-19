@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
+	"time"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/elevran/chatter/pkg/gameon"
 )
 
@@ -16,8 +18,8 @@ type Client struct {
 
 func newClient(config *Config) *Client {
 	return &Client{
-		httpClient: &http.Client{},
-		serverURL: config.RoomServiceURL,
+		httpClient: &http.Client{Timeout: 5 * time.Second},
+		serverURL:  config.RoomServiceURL,
 	}
 }
 
@@ -50,11 +52,15 @@ func (cl *Client) doRequest(path string, userID string, body interface{}) (*game
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set(gameon.UserIDHeader, userID)
 
+	logrus.Debugf("Executing HTTP request: %s %s (%d bytes)", req.Method, req.RequestURI, req.ContentLength)
+
 	resp, err := cl.httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+
+	logrus.Debugf("Received HTTP response: %d %s (%d bytes)", resp.StatusCode, resp.Status, resp.ContentLength)
 
 	respBytes, err := ioutil.ReadAll(resp.Body)
 	if err != nil {

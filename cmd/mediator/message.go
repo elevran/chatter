@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/elevran/chatter/pkg/gameon"
 )
 
@@ -43,4 +44,12 @@ func parseMessage(data []byte) (*gameon.Message, error) {
 	}
 
 	return msg, nil
+}
+
+func messageToFields(msg *gameon.Message) logrus.Fields {
+	return logrus.Fields{
+		"direction": msg.Direction,
+		"recipient": msg.Recipient,
+		"payload":   string(msg.Payload),
+	}
 }
