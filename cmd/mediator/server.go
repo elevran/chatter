@@ -14,12 +14,14 @@ var (
 
 type Server struct {
 	client   *Client
+	roomID   string
 	sessions *SessionManager
 }
 
-func newServer() *Server {
+func newServer(config *Config) *Server {
 	s := &Server{
-		client:   newClient(),
+		client:   newClient(config),
+		roomID:   config.RoomID,
 		sessions: NewSessionManager(),
 	}
 
@@ -58,6 +60,12 @@ func (s *Server) handleMessages(session *Session) {
 
 		msg, err := parseMessage(bytes)
 		if err != nil {
+			session.Close()
+			return
+		}
+
+		// Validate the message recipient is our own room ID
+		if s.roomID != "" && msg.Recipient != s.roomID {
 			session.Close()
 			return
 		}

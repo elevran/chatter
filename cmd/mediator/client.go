@@ -14,9 +14,10 @@ type Client struct {
 	serverURL  string
 }
 
-func newClient() *Client {
+func newClient(config *Config) *Client {
 	return &Client{
 		httpClient: &http.Client{},
+		serverURL: config.RoomServiceURL,
 	}
 }
 
