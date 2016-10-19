@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/elevran/chatter/pkg/gameon"
 )
 
 type room struct{}
@@ -20,7 +22,7 @@ func (r *room) hello(resp http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	var hello Hello
+	var hello gameon.Hello
 	decoder := json.NewDecoder(req.Body)
 	err := decoder.Decode(&hello)
 
@@ -29,35 +31,31 @@ func (r *room) hello(resp http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	location := Location{
-		Type:        "location",
-		Name:        "chat room",
-		Description: "a darkly lit room, there are people here, some are walking around, some are standing in groups",
-	}
-	welcome := Event{
-		Type:     "event",
-		Bookmark: time.Now().UTC().String(),
-		Content: map[string]string{
-			hello.UserID: "welcome",
-			"*":          fmt.Sprintf("%s(%s) just enetered the room", hello.UserID, hello.Username),
-		},
-	}
-	array := []interface{}{location, welcome}
-	b, err := json.Marshal(&array)
-	raw := json.RawMessage(b)
-	body, err := json.Marshal(&Response{
-		Destination: "player",
-		Recipient:   hello.UserID,
-		Payload:     &raw,
-	})
-	if err != nil {
-		resp.WriteHeader(http.StatusInternalServerError)
-		return
+	location := gameon.Message{
+		Direction: "player",
+		Recipient: hello.UserID,
+		Payload: jsonMarshal(gameon.Location{
+			Type:        "location",
+			Name:        "chat room",
+			Description: "a darkly lit room, there are people here, some are walking around, some are standing in groups",
+		}),
 	}
 
-	resp.Header().Set("Content-Type", "application/json")
-	resp.WriteHeader(http.StatusOK)
-	resp.Write(body)
+	welcome := gameon.Message{
+		Direction: "player",
+		Recipient: "*",
+		Payload: jsonMarshal(gameon.Event{
+			ChatEventInfo: gameon.ChatEventInfo{
+				Bookmark: time.Now().UTC().String(),
+				Content: map[string]string{
+					hello.UserID: "Welcome!",
+					"*":          fmt.Sprintf("%s has just entered the room", hello.Username),
+				},
+			},
+		}),
+	}
+
+	writeResponseMessages(resp, location, welcome)
 }
 
 func (r *room) goodbye(resp http.ResponseWriter, req *http.Request) {
@@ -66,107 +64,115 @@ func (r *room) goodbye(resp http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	var bye Goodbye
+	var goodbye gameon.Goodbye
 	decoder := json.NewDecoder(req.Body)
-	err := decoder.Decode(&bye)
-	if err != nil || bye.UserID == "" {
+	err := decoder.Decode(&goodbye)
+
+	if err != nil || goodbye.UserID == "" {
 		resp.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	body, err := json.Marshal(&Response{
-		Destination: "player",
-		Recipient:   bye.UserID,
-		// Payload is array of JSON raw messages (location, event announcing user departure and sending
-		// "farewell and thanks for all the fish" to user)
-	})
-
-	if err != nil {
-		resp.WriteHeader(http.StatusInternalServerError)
-		return
+	farewell := gameon.Message{
+		Direction: "player",
+		Recipient: "*",
+		Payload: jsonMarshal(gameon.Event{
+			ChatEventInfo: gameon.ChatEventInfo{
+				Bookmark: time.Now().UTC().String(),
+				Content: map[string]string{
+					goodbye.UserID: "Farewell!",
+					"*":            fmt.Sprintf("%s has left the room", goodbye.Username),
+				},
+			},
+		}),
 	}
 
-	resp.Header().Set("Content-Type", "application/json")
-	resp.WriteHeader(http.StatusOK)
-	resp.Write(body)
+	writeResponseMessages(resp, farewell)
 }
 
-func (r *room) message(resp http.ResponseWriter, req *http.Request) {
+func (r *room) room(resp http.ResponseWriter, req *http.Request) {
 	if req.Method != "POST" {
 		resp.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 
-	var message PlayerMessage
+	var command gameon.RoomCommand
 	decoder := json.NewDecoder(req.Body)
-	err := decoder.Decode(&message)
-	if err != nil || message.UserID == "" || message.Content == "" {
+	err := decoder.Decode(&command)
+	if err != nil || command.UserID == "" || command.Content == "" {
 		resp.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	if message.Content[0] == '/' { // room command
-		r.handleCommand(message, resp)
-
+	if strings.HasPrefix(command.Content, "/") {
+		// slash command
+		r.handleSlash(command, resp)
 	} else {
-		r.handleChat(message, resp)
+		// chat command
+		r.handleChat(command, resp)
 	}
 }
 
-func (r *room) handleCommand(message PlayerMessage, resp http.ResponseWriter) {
-	words := strings.Fields(message.Content)
-	command := strings.ToLower(words[0])
+func (r *room) handleSlash(command gameon.RoomCommand, resp http.ResponseWriter) {
+	words := strings.Fields(command.Content)
+	commandName := strings.ToLower(words[0])
 
-	var reply string
-
-	switch command {
+	var eventContent string
+	switch commandName {
 	case "/examine":
-		reply = "Shouldn't you be mingling?"
+		eventContent = "Shouldn't you be mingling?"
 	case "/go":
-		reply = "Sorry to see you go..."
+		eventContent = "Sorry to see you go..."
 	case "/inventory":
-		reply = "There is nothing here"
+		eventContent = "There is nothing here"
 	case "/look":
-		reply = "It's just a room"
+		eventContent = "It's just a room"
 	default:
-		reply = fmt.Sprintf("Don't know how to %s", command[1:len(command)])
+		eventContent = fmt.Sprintf("Don't know how to %s", commandName[1:])
 	}
 
-	r.sendEvent(message.UserID, reply, resp)
+	event := gameon.Message{
+		Direction: "player",
+		Recipient: command.UserID,
+		Payload: jsonMarshal(gameon.Event{
+			ChatEventInfo: gameon.ChatEventInfo{
+				Content: map[string]string{
+					command.UserID: eventContent,
+				},
+			},
+		}),
+	}
+
+	writeResponseMessages(resp, event)
 }
 
-func (r *room) handleChat(message PlayerMessage, resp http.ResponseWriter) {
-	r.sendEvent("*", message.Content, resp)
+func (r *room) handleChat(command gameon.RoomCommand, resp http.ResponseWriter) {
+	chat := gameon.Message{
+		Direction: "player",
+		Recipient: "*",
+		Payload: jsonMarshal(gameon.Chat{
+			ChatEventInfo: gameon.ChatEventInfo{
+				Content: map[string]string{
+					"*": command.Content,
+				},
+			},
+		}),
+	}
+
+	writeResponseMessages(resp, chat)
 }
 
-func (r *room) sendEvent(recipient, message string, resp http.ResponseWriter) {
-	event := Event{
-		Type:     "event",
-		Bookmark: time.Now().UTC().String(),
-		Content: map[string]string{
-			recipient: message,
-		},
-	}
-
-	body, err := json.Marshal(&event)
-	if err != nil {
-		resp.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	raw := json.RawMessage(body)
-
-	body, err = json.Marshal(&Response{
-		Destination: "player",
-		Recipient:   recipient,
-		Payload:     &raw,
+func writeResponseMessages(resp http.ResponseWriter, messages ...gameon.Message) {
+	bytes := jsonMarshal(gameon.MessageCollection{
+		Messages: messages,
 	})
-
-	if err != nil {
-		resp.WriteHeader(http.StatusInternalServerError)
-		return
-	}
 
 	resp.Header().Set("Content-Type", "application/json")
 	resp.WriteHeader(http.StatusOK)
-	resp.Write(body)
+	resp.Write(bytes)
+}
+
+func jsonMarshal(obj interface{}) []byte {
+	bytes, _ := json.Marshal(obj)
+	return bytes
 }

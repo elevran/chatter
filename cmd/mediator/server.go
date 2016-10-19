@@ -91,7 +91,7 @@ func (s *Server) handleMessages(session *Session) {
 		case "roomGoodbye":
 			payload = &gameon.Goodbye{}
 		case "room":
-			payload = &gameon.Command{}
+			payload = &gameon.RoomCommand{}
 		default:
 			logrus.WithError(fmt.Errorf("unrecognized message direction: %s", msg.Direction)).
 				Errorf("Invalid message received")
@@ -109,8 +109,8 @@ func (s *Server) handleMessages(session *Session) {
 			s.handleHello(payload, session)
 		case *gameon.Goodbye:
 			s.handleGoodbye(payload, session)
-		case *gameon.Command:
-			s.handleCommand(payload, session)
+		case *gameon.RoomCommand:
+			s.handleRoomCommand(payload, session)
 		default:
 			logrus.WithError(fmt.Errorf("unrecognized payload type: %T", payload))
 		}
@@ -157,8 +157,8 @@ func (s *Server) handleGoodbye(goodbye *gameon.Goodbye, session *Session) {
 	s.handleResponse(resp)
 }
 
-func (s *Server) handleCommand(command *gameon.Command, session *Session) {
-	resp, err := s.client.doCommand(command)
+func (s *Server) handleRoomCommand(command *gameon.RoomCommand, session *Session) {
+	resp, err := s.client.doRoomCommand(command)
 	if err != nil {
 		logrus.WithError(err).Errorf("Error executing command with room service")
 		return

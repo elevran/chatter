@@ -21,7 +21,7 @@ func main() {
 
 		http.HandleFunc("/hello", room.hello)
 		http.HandleFunc("/goodbye", room.goodbye)
-		http.HandleFunc("/room", room.message)
+		http.HandleFunc("/room", room.room)
 		return http.ListenAndServe(fmt.Sprintf(":%d", config.HTTPPort), nil)
 
 	}

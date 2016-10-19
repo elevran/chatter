@@ -31,7 +31,7 @@ func (cl *Client) doGoodbye(goodbye *gameon.Goodbye) (*gameon.MessageCollection,
 	return cl.doRequest("/goodbye", goodbye.UserID, goodbye)
 }
 
-func (cl *Client) doCommand(command *gameon.Command) (*gameon.MessageCollection, error) {
+func (cl *Client) doRoomCommand(command *gameon.RoomCommand) (*gameon.MessageCollection, error) {
 	return cl.doRequest("/room", command.UserID, command)
 }
 

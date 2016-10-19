@@ -10,14 +10,15 @@ import (
 )
 
 func main() {
+	logrus.SetLevel(logrus.DebugLevel)
+
 	app := cli.NewApp()
 	app.Name = "mediator"
 	app.Flags = Flags
 	app.Action = func(context *cli.Context) error {
-		logrus.SetLevel(logrus.DebugLevel)
-
 		config := newConfig(context)
 		s := newServer(config)
+
 		logrus.Infof("Starting mediator service on port %d", config.WebsocketPort)
 
 		http.HandleFunc("/", s.handleHTTP)
@@ -29,5 +30,4 @@ func main() {
 	if err != nil {
 		logrus.WithError(err).Fatalf("Error running main")
 	}
-
 }

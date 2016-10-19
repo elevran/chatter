@@ -15,25 +15,29 @@ type Message struct {
 	Payload   json.RawMessage `json:"payload,omitempty"`
 }
 
-// Command is the message payload provided for a [client --> mediator --> room] chat/command message.
-type Command struct {
+// UserInfo holds the ID and username of a GameOn! client.
+// It is not a complete GameOn! message on its own, but rather meant to be embedded within different message types.
+type UserInfo struct {
 	Username string `json:"username,omitempty"`
 	UserID   string `json:"userId,omitempty"`
-	Content  string `json:"content,omitempty"`
+}
+
+// RoomCommand is the message payload provided for a [client --> mediator --> room] room chat/slash command message.
+type RoomCommand struct {
+	UserInfo
+	Content string `json:"content,omitempty"`
 }
 
 // Hello is the message payload provided for a [mediator --> room] hello message.
 type Hello struct {
-	Username string `json:"username,omitempty"`
-	UserID   string `json:"userId,omitempty"`
-	Version  int    `json:"version,omitempty"`
-	Recovery bool   `json:"recovery,omitempty"`
+	UserInfo
+	Version  int  `json:"version,omitempty"`
+	Recovery bool `json:"recovery,omitempty"`
 }
 
 // Goodbye is the message payload provided for a [mediator --> room] goodbye message.
 type Goodbye struct {
-	Username string `json:"username,omitempty"`
-	UserID   string `json:"userId,omitempty"`
+	UserInfo
 }
 
 // Ack is the message payload provided for a [room --> mediator] ack message.
@@ -60,76 +64,41 @@ type PlayerLocation struct {
 	Exit    string `json:"exit,omitempty"`
 }
 
+// ChatEventInfo holds the content and bookmark of a chat/event message payload.
+// It is not a complete GameOn message on its own, but rather meant to be embedded within Chat / Event message payloads.
+type ChatEventInfo struct {
+	Content  map[string]string `json:"content,omitempty"`
+	Bookmark string            `json:"bookmark,omitempty"`
+}
+
 // Chat is the message payload provided for a [room --> mediator --> client] chat message.
 type Chat struct {
-	Content  Content
-	Bookmark string `json:"bookmark,omitempty"`
+	ChatEventInfo
 }
 
 // Event is the message payload provided for a [room --> mediator --> client] event message.
 type Event struct {
-	Content  Content
-	Bookmark string `json:"bookmark,omitempty"`
+	ChatEventInfo
 }
 
-// Content part of a chat / event message
-type Content struct {
-	Broadcast string
-	Private   map[string]string
-}
-
-type typedContent struct {
-	Type     string  `json:"type,omitempty"`
-	Content  Content `json:"content,omitempty"`
-	Bookmark string  `json:"bookmark,omitempty"`
+type typedChatEventInfo struct {
+	Type string `json:"type,omitempty"`
+	ChatEventInfo
 }
 
 func (c *Chat) MarshalJSON() ([]byte, error) {
-	t := &typedContent{
-		Type:     "chat",
-		Content:  c.Content,
-		Bookmark: c.Bookmark,
+	t := &typedChatEventInfo{
+		Type:          "chat",
+		ChatEventInfo: c.ChatEventInfo,
 	}
 
 	return json.Marshal(t)
 }
 
 func (e *Event) MarshalJSON() ([]byte, error) {
-	t := &typedContent{
-		Type:     "event",
-		Content:  e.Content,
-		Bookmark: e.Bookmark,
+	t := &typedChatEventInfo{
+		Type:          "event",
+		ChatEventInfo: e.ChatEventInfo,
 	}
 	return json.Marshal(t)
-}
-
-func (c *Content) MarshalJSON() ([]byte, error) {
-	m := make(map[string]string, len(c.Private)+1)
-	for user, msg := range c.Private {
-		m[user] = msg
-	}
-
-	if c.Broadcast != "" {
-		m["*"] = c.Broadcast
-	}
-
-	return json.Marshal(m)
-}
-
-func (c *Content) UnmarshalJSON(data []byte) error {
-	m := make(map[string]string)
-	err := json.Unmarshal(data, &m)
-	if err != nil {
-		return err
-	}
-
-	c.Private = make(map[string]string, len(m))
-	for user, msg := range m {
-		c.Private[user] = msg
-	}
-
-	delete(c.Private, "*")
-	c.Broadcast = m["*"]
-
-	return nil
 }
