@@ -69,7 +69,13 @@ func (s *Session) Close() error {
 		delete(s.manager.sessions, s.UserID)
 	}
 
-	close(s.done)
+	select {
+	case <- s.done:
+		// already closed
+	default:
+		close(s.done)
+	}
+
 	return nil
 }
 

@@ -51,22 +51,23 @@ func (s *Server) handleWebsocket(conn *websocket.Conn) {
 }
 
 func (s *Server) handleMessages(session *Session) {
+	// The loop runs forever, and is terminated only when an error occurs.
+	// In such a case, attempt to close the session (in case not closed already).
+	defer session.Close()
+
 	for {
 		_, bytes, err := session.Conn.ReadMessage()
 		if err != nil {
-			session.Close()
 			return
 		}
 
 		msg, err := parseMessage(bytes)
 		if err != nil {
-			session.Close()
 			return
 		}
 
 		// Validate the message recipient is our own room ID
 		if s.roomID != "" && msg.Recipient != s.roomID {
-			session.Close()
 			return
 		}
 
@@ -85,7 +86,6 @@ func (s *Server) handleMessages(session *Session) {
 
 		err = json.Unmarshal(msg.Payload, payload)
 		if err != nil {
-			session.Close()
 			return
 		}
 
