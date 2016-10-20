@@ -4,25 +4,25 @@ package main
 
 import (
 	"bufio"
-	"net/http"
+	"io"
 	"os"
 	"strings"
 )
 
-type mapFind struct {
+type mapFinder struct {
 	profanities map[string]struct{}
 }
 
-func newProfanityFinder() (*mapFind, error) {
-	mf := &mapFind{
+func newProfanityFinder() (*mapFinder, error) {
+	mf := &mapFinder{
 		profanities: make(map[string]struct{}),
 	}
 	err := mf.load("./list_of_dirty_naughty_obscene_and_otherwise_bad_words.txt")
 	return mf, nil
 }
 
-func (mf *mapFind) Find(r *http.Request) (bool, error) {
-	scanner := bufio.NewScanner(r.Body)
+func (mf *mapFinder) Find(input io.Reader) (bool, error) {
+	scanner := bufio.NewScanner(input)
 	scanner.Split(bufio.ScanWords)
 
 	for scanner.Scan() {
@@ -36,7 +36,7 @@ func (mf *mapFind) Find(r *http.Request) (bool, error) {
 	return false, scanner.Err()
 }
 
-func (mf *mapFind) load(path string) error {
+func (mf *mapFinder) load(path string) error {
 	file, err := os.Open(path)
 	if err != nil {
 		return err

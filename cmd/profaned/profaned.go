@@ -1,29 +1,12 @@
 package main
 
 import (
-	"fmt"
+	"io"
 	"net/http"
-	"os"
 )
 
 type ProfanityFinder interface {
-	Find(*http.Request) (bool, error)
-}
-
-func main() {
-	finder, err := newProfanityFinder()
-
-	if err != nil {
-		fmt.Println("failed to create handler", err.Error())
-		os.Exit(1)
-	}
-
-	h := &handler{
-		profanity: finder,
-	}
-
-	http.HandleFunc("/", h.handle)
-	http.ListenAndServe(":80", nil)
+	Find(io.Reader) (bool, error)
 }
 
 type handler struct {
@@ -41,7 +24,7 @@ func (h *handler) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	found, err := h.profanity.Find(r)
+	found, err := h.profanity.Find(r.Body)
 
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)

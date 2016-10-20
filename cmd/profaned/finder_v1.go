@@ -3,29 +3,29 @@
 package main
 
 import (
+	"io"
 	"io/ioutil"
-	"net/http"
 	"regexp"
 )
 
-type regexSearch struct {
+type regexProfanityFinder struct {
 	re *regexp.Regexp
 }
 
-func newProfanityFinder() (*regexSearch, error) {
+func newProfanityFinder() (*regexProfanityFinder, error) {
 	var err error
-	s := &regexSearch{}
+	s := &regexProfanityFinder{}
 
 	s.re, err = regexp.Compile("(boogers|snot|poop|shucks|argh)") // our list of nasty words
 	return s, err
 }
 
-func (s *regexSearch) Find(r *http.Request) (bool, error) {
-	body, err := ioutil.ReadAll(r.Body)
+func (s *regexProfanityFinder) Find(input io.Reader) (bool, error) {
+	content, err := ioutil.ReadAll(input)
 
 	if err != nil {
 		return true, err // be pessimistic on errors
 	}
 
-	return s.re.Match(body), nil
+	return s.re.Match(content), nil
 }
