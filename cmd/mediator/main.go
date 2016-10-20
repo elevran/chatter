@@ -1,32 +1,20 @@
 package main
 
 import (
-	"fmt"
 	"net/http"
-	"os"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/urfave/cli"
 )
 
 func main() {
 	logrus.SetLevel(logrus.DebugLevel)
+	logrus.Infof("Starting mediator service")
 
-	app := cli.NewApp()
-	app.Name = "mediator"
-	app.Flags = Flags
-	app.Action = func(context *cli.Context) error {
-		config := newConfig(context)
-		s := newServer(config)
+	m := newMediator()
 
-		logrus.Infof("Starting mediator service on port %d", config.WebsocketPort)
+	http.HandleFunc("/", m.handleHTTP)
 
-		http.HandleFunc("/", s.handleHTTP)
-		return http.ListenAndServe(fmt.Sprintf(":%d", config.WebsocketPort), nil)
-
-	}
-
-	err := app.Run(os.Args)
+	err := http.ListenAndServe(":3000", nil)
 	if err != nil {
 		logrus.WithError(err).Fatalf("Error running main")
 	}

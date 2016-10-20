@@ -6,6 +6,11 @@ import (
 
 	"fmt"
 
+	"os"
+
+	"bytes"
+	"strings"
+
 	"github.com/Sirupsen/logrus"
 	"github.com/elevran/chatter/pkg/gameon"
 	"github.com/gorilla/websocket"
@@ -15,23 +20,23 @@ var (
 	SupportedVersions = []int{1}
 )
 
-type Server struct {
-	client   *Client
+type mediator struct {
+	room     *room
 	roomID   string
 	sessions *SessionManager
 }
 
-func newServer(config *Config) *Server {
-	s := &Server{
-		client:   newClient(config),
-		roomID:   config.RoomID,
-		sessions: NewSessionManager(),
+func newMediator() *mediator {
+	m := &mediator{
+		room:     newRoom(),
+		roomID:   os.Getenv("ROOM_ID"),
+		sessions: newSessions(),
 	}
 
-	return s
+	return m
 }
 
-func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
+func (m *mediator) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	logrus.Debugf("Incoming HTTP request from %s", r.RemoteAddr)
 
 	var upgrader websocket.Upgrader
@@ -42,14 +47,14 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	logrus.Debugf("Websocket connection established with %s", conn.RemoteAddr().String())
-	s.handleWebsocket(conn)
+	m.handleWebsocket(conn)
 }
 
-func (s *Server) handleWebsocket(conn *websocket.Conn) {
-	session := s.sessions.NewSession(conn)
+func (m *mediator) handleWebsocket(conn *websocket.Conn) {
+	session := m.sessions.NewSession(conn)
 
-	s.ack(session)
-	go s.handleMessages(session)
+	m.ack(session)
+	go m.handleMessages(session)
 
 	select {
 	case <-session.Closed():
@@ -57,7 +62,7 @@ func (s *Server) handleWebsocket(conn *websocket.Conn) {
 	}
 }
 
-func (s *Server) handleMessages(session *Session) {
+func (m *mediator) handleMessages(session *Session) {
 	// The loop runs forever, and is terminated only when an error occurs.
 	// In such a case, attempt to close the session (in case not closed already).
 	defer session.Close()
@@ -78,8 +83,8 @@ func (s *Server) handleMessages(session *Session) {
 		logrus.WithFields(messageToFields(msg)).Debugf("Websocket message received")
 
 		// Validate the message recipient is our own room ID
-		if s.roomID != "" && msg.Recipient != s.roomID {
-			logrus.WithError(fmt.Errorf("recipient (%s) doesn't match expected room id (%s)", msg.Recipient, s.roomID)).
+		if m.roomID != "" && msg.Recipient != m.roomID {
+			logrus.WithError(fmt.Errorf("recipient (%s) doesn't match expected room id (%s)", msg.Recipient, m.roomID)).
 				Errorf("Invalid message received")
 			return
 		}
@@ -106,18 +111,18 @@ func (s *Server) handleMessages(session *Session) {
 
 		switch payload := payload.(type) {
 		case *gameon.Hello:
-			s.handleHello(payload, session)
+			m.handleHello(payload, session)
 		case *gameon.Goodbye:
-			s.handleGoodbye(payload, session)
+			m.handleGoodbye(payload, session)
 		case *gameon.RoomCommand:
-			s.handleRoomCommand(payload, session)
+			m.handleRoomCommand(payload, session)
 		default:
 			logrus.WithError(fmt.Errorf("unrecognized payload type: %T", payload))
 		}
 	}
 }
 
-func (s *Server) ack(session *Session) {
+func (m *mediator) ack(session *Session) {
 	logrus.Debugf("Sending ack for websocket connection with remote address %s", session.Conn.RemoteAddr().String())
 
 	ack := gameon.Ack{
@@ -130,44 +135,44 @@ func (s *Server) ack(session *Session) {
 		Payload:   ackBytes,
 	}
 
-	s.sendMessage(msg, session)
+	sendMessage(msg, session)
 }
 
-func (s *Server) handleHello(hello *gameon.Hello, session *Session) {
+func (m *mediator) handleHello(hello *gameon.Hello, session *Session) {
 	session.SetUserID(hello.UserID)
 
-	resp, err := s.client.doHello(hello)
+	resp, err := m.room.Hello(hello)
 	if err != nil {
 		logrus.WithError(err).Errorf("Error executing 'hello' with room service")
 		return
 	}
 
-	s.handleResponse(resp)
+	m.handleResponse(resp)
 }
 
-func (s *Server) handleGoodbye(goodbye *gameon.Goodbye, session *Session) {
+func (m *mediator) handleGoodbye(goodbye *gameon.Goodbye, session *Session) {
 	defer session.Close()
 
-	resp, err := s.client.doGoodbye(goodbye)
+	resp, err := m.room.Hello(goodbye)
 	if err != nil {
 		logrus.WithError(err).Errorf("Error executing 'goodbye' with room service")
 		return
 	}
 
-	s.handleResponse(resp)
+	m.handleResponse(resp)
 }
 
-func (s *Server) handleRoomCommand(command *gameon.RoomCommand, session *Session) {
-	resp, err := s.client.doRoomCommand(command)
+func (m *mediator) handleRoomCommand(command *gameon.RoomCommand, session *Session) {
+	resp, err := m.room.Command(command)
 	if err != nil {
 		logrus.WithError(err).Errorf("Error executing command with room service")
 		return
 	}
 
-	s.handleResponse(resp)
+	m.handleResponse(resp)
 }
 
-func (s *Server) handleResponse(resp *gameon.MessageCollection) {
+func (m *mediator) handleResponse(resp *gameon.MessageCollection) {
 	switch len(resp.Messages) {
 	case 0:
 		logrus.Debugf("Response contains no messages")
@@ -179,34 +184,18 @@ func (s *Server) handleResponse(resp *gameon.MessageCollection) {
 
 	for _, msg := range resp.Messages {
 		if msg.Recipient == "*" {
-			s.broadcastMessage(&msg, s.sessions.GetUserSessions())
+			sendMessage(&msg, m.sessions.GetUserSessions()...)
 		} else {
-			session := s.sessions.GetUserSession(msg.Recipient)
+			session := m.sessions.GetUserSession(msg.Recipient)
 			if session != nil {
-				s.sendMessage(&msg, session)
+				sendMessage(&msg, session)
 			}
 		}
 	}
 }
 
-func (s *Server) sendMessage(msg *gameon.Message, session *Session) {
+func sendMessage(msg *gameon.Message, sessions ...*Session) {
 	logrus.WithFields(messageToFields(msg)).Debugf("Sending message")
-
-	bytes, err := formatMessage(msg)
-	if err != nil {
-		logrus.WithError(err).Errorf("Error formatting message")
-		return
-	}
-
-	err = session.Conn.WriteMessage(websocket.TextMessage, bytes)
-	if err != nil {
-		logrus.WithError(err).Errorf("Error sending message")
-		session.Close()
-	}
-}
-
-func (s *Server) broadcastMessage(msg *gameon.Message, sessions []*Session) {
-	logrus.WithFields(messageToFields(msg)).Debugf("Broadcasting message")
 
 	bytes, err := formatMessage(msg)
 	if err != nil {
@@ -221,5 +210,49 @@ func (s *Server) broadcastMessage(msg *gameon.Message, sessions []*Session) {
 			session.Close()
 		}
 	}
+}
 
+func formatMessage(msg *gameon.Message) ([]byte, error) {
+	var buf bytes.Buffer
+
+	buf.WriteString(msg.Direction)
+	buf.WriteRune(',')
+
+	if msg.Recipient != "" {
+		buf.WriteString(msg.Recipient)
+		buf.WriteRune(',')
+	}
+
+	buf.Write(msg.Payload)
+	return buf.Bytes(), nil
+}
+
+func parseMessage(data []byte) (*gameon.Message, error) {
+	parts := strings.SplitN(string(data), ",", 3)
+
+	if len(parts) < 2 {
+		return nil, fmt.Errorf("invalid websocket message format: %s", string(data))
+	}
+
+	msg := new(gameon.Message)
+	msg.Direction = parts[0]
+
+	if strings.HasPrefix(parts[1], "{") {
+		// case 1: <direction>,{...}
+		msg.Payload = data[len(parts[0])+1:]
+	} else {
+		// case 2: <direction>,<recipient>,{...}
+		msg.Recipient = parts[1]
+		msg.Payload = data[len(parts[0])+len(parts[1])+2:]
+	}
+
+	return msg, nil
+}
+
+func messageToFields(msg *gameon.Message) logrus.Fields {
+	return logrus.Fields{
+		"direction": msg.Direction,
+		"recipient": msg.Recipient,
+		"payload":   string(msg.Payload),
+	}
 }

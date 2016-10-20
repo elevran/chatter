@@ -7,36 +7,43 @@ import (
 	"net/http"
 	"time"
 
+	"os"
+
 	"github.com/Sirupsen/logrus"
 	"github.com/elevran/chatter/pkg/gameon"
 )
 
-type Client struct {
+type room struct {
 	httpClient *http.Client
 	serverURL  string
 }
 
-func newClient(config *Config) *Client {
-	return &Client{
+func newRoom() *room {
+	serverURL := os.Getenv("ROOM_SERVICE_URL")
+	if serverURL == "" {
+		serverURL = "http://localhost:6379/room"
+	}
+
+	return &room{
 		httpClient: &http.Client{Timeout: 5 * time.Second},
-		serverURL:  config.RoomServiceURL,
+		serverURL:  serverURL,
 	}
 }
 
-func (cl *Client) doHello(hello *gameon.Hello) (*gameon.MessageCollection, error) {
-	return cl.doRequest("/hello", hello.UserID, hello)
+func (r *room) Hello(hello *gameon.Hello) (*gameon.MessageCollection, error) {
+	return r.doRequest("/hello", hello.UserInfo, hello)
 }
 
-func (cl *Client) doGoodbye(goodbye *gameon.Goodbye) (*gameon.MessageCollection, error) {
-	return cl.doRequest("/goodbye", goodbye.UserID, goodbye)
+func (r *room) Goodbye(goodbye *gameon.Goodbye) (*gameon.MessageCollection, error) {
+	return r.doRequest("/goodbye", goodbye.UserInfo, goodbye)
 }
 
-func (cl *Client) doRoomCommand(command *gameon.RoomCommand) (*gameon.MessageCollection, error) {
-	return cl.doRequest("/room", command.UserID, command)
+func (r *room) Command(command *gameon.RoomCommand) (*gameon.MessageCollection, error) {
+	return r.doRequest("/room", command.UserInfo, command)
 }
 
-func (cl *Client) doRequest(path string, userID string, body interface{}) (*gameon.MessageCollection, error) {
-	url := cl.serverURL + path
+func (r *room) doRequest(path string, userInfo gameon.UserInfo, body interface{}) (*gameon.MessageCollection, error) {
+	url := r.serverURL + path
 
 	reqBytes, err := json.Marshal(body)
 	if err != nil {
@@ -50,11 +57,12 @@ func (cl *Client) doRequest(path string, userID string, body interface{}) (*game
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set(gameon.UserIDHeader, userID)
+	req.Header.Set(gameon.UserIDHeader, userInfo.UserID)
+	req.Header.Set(gameon.UsernameHeader, userInfo.Username)
 
 	logrus.Debugf("Executing HTTP request: %s %s (%d bytes)", req.Method, req.RequestURI, req.ContentLength)
 
-	resp, err := cl.httpClient.Do(req)
+	resp, err := r.httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}

@@ -19,7 +19,7 @@ type SessionManager struct {
 	mutex    sync.RWMutex
 }
 
-func NewSessionManager() *SessionManager {
+func newSessions() *SessionManager {
 	return &SessionManager{
 		sessions: make(map[string]*Session),
 	}
