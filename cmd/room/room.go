@@ -9,6 +9,13 @@ import (
 	"github.com/elevran/chatter/pkg/gameon"
 )
 
+var exits = map[string]string{
+	"N": "An old wooden door with a large arrow carved on its center",
+	"S": "A heavy metal door with signs of rust",
+	"W": "A gray, plain looking door",
+	"E": "A door surrounded by a mysterious glow along it edges",
+}
+
 type room struct{}
 
 func newChatRoom() *room {
@@ -35,8 +42,12 @@ func (r *room) hello(resp http.ResponseWriter, req *http.Request) {
 		Recipient: hello.UserID,
 		Payload: jsonMarshal(gameon.Location{
 			Type:        "location",
-			Name:        "chat room",
+			Name:        "Chatter",
+			FullName:    "A chat room",
 			Description: "a darkly lit room, there are people here, some are walking around, some are standing in groups",
+			Exits:       exits,
+			Commands:    map[string]string{},
+			Inventory:   []string{},
 		}),
 	}
 
@@ -112,32 +123,53 @@ func (r *room) handleSlash(command gameon.RoomCommand, resp http.ResponseWriter)
 	words := strings.Fields(command.Content)
 	commandName := strings.ToLower(words[0])
 
-	var eventContent string
+	replyWithEvent := func(content string) {
+		event := gameon.Message{
+			Direction: "player",
+			Recipient: command.UserID,
+			Payload: jsonMarshal(gameon.Event{
+				Type: "event",
+				Content: map[string]string{
+					command.UserID: content,
+				},
+			}),
+		}
+		writeResponseMessages(resp, event)
+	}
+
 	switch commandName {
-	case "/examine":
-		eventContent = "Shouldn't you be mingling?"
 	case "/go":
-		eventContent = "Sorry to see you go..."
+		if len(words) < 2 {
+			replyWithEvent("Go where?")
+			break
+		}
+
+		exitID := strings.ToUpper(words[2])
+		if _, ok := exits[exitID]; !ok {
+			replyWithEvent("You probably don't wanna go there...")
+			break
+		}
+
+		location := gameon.Message{
+			Direction: "playerLocation",
+			Recipient: command.UserID,
+			Payload: jsonMarshal(gameon.PlayerLocation{
+				Type:    "exit",
+				Content: "You frantically run towards the exit",
+				ExitID:  exitID,
+			}),
+		}
+		writeResponseMessages(resp, location)
+
+	case "/examine":
+		replyWithEvent("Shouldn't you be mingling?")
 	case "/inventory":
-		eventContent = "There is nothing here"
+		replyWithEvent("There is nothing here")
 	case "/look":
-		eventContent = "It's just a room"
+		replyWithEvent("It's just a room")
 	default:
-		eventContent = fmt.Sprintf("Don't know how to %s", commandName[1:])
+		replyWithEvent(fmt.Sprintf("Don't know how to %s", commandName[1:]))
 	}
-
-	event := gameon.Message{
-		Direction: "player",
-		Recipient: command.UserID,
-		Payload: jsonMarshal(gameon.Event{
-			Type: "event",
-			Content: map[string]string{
-				command.UserID: eventContent,
-			},
-		}),
-	}
-
-	writeResponseMessages(resp, event)
 }
 
 func (r *room) handleChat(command gameon.RoomCommand, resp http.ResponseWriter) {
