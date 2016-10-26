@@ -16,10 +16,14 @@ var exits = map[string]string{
 	"E": "A door surrounded by a mysterious glow along it edges",
 }
 
-type room struct{}
+type room struct {
+	profanityChecker ProfanityChecker
+}
 
-func newChatRoom() *room {
-	return &room{}
+func newRoom() *room {
+	return &room{
+		profanityChecker: newProfanityChecker(),
+	}
 }
 
 func (r *room) hello(resp http.ResponseWriter, req *http.Request) {
@@ -123,30 +127,17 @@ func (r *room) handleSlash(command gameon.RoomCommand, resp http.ResponseWriter)
 	words := strings.Fields(command.Content)
 	commandName := strings.ToLower(words[0])
 
-	replyWithEvent := func(content string) {
-		event := gameon.Message{
-			Direction: "player",
-			Recipient: command.UserID,
-			Payload: jsonMarshal(gameon.Event{
-				Type: "event",
-				Content: map[string]string{
-					command.UserID: content,
-				},
-			}),
-		}
-		writeResponseMessages(resp, event)
-	}
-
+	var eventContent string
 	switch commandName {
 	case "/go":
 		if len(words) < 2 {
-			replyWithEvent("Go where?")
+			eventContent = "Go where?"
 			break
 		}
 
 		exitID := strings.ToUpper(words[2])
 		if _, ok := exits[exitID]; !ok {
-			replyWithEvent("You probably don't wanna go there...")
+			eventContent = "You probably don't wanna go there..."
 			break
 		}
 
@@ -160,30 +151,59 @@ func (r *room) handleSlash(command gameon.RoomCommand, resp http.ResponseWriter)
 			}),
 		}
 		writeResponseMessages(resp, location)
+		return
 
 	case "/examine":
-		replyWithEvent("Shouldn't you be mingling?")
+		eventContent = "Shouldn't you be mingling?"
 	case "/inventory":
-		replyWithEvent("There is nothing here")
+		eventContent = "There is nothing here"
 	case "/look":
-		replyWithEvent("It's just a room")
+		eventContent = "It's just a room"
 	default:
-		replyWithEvent(fmt.Sprintf("Don't know how to %s", commandName[1:]))
+		eventContent = fmt.Sprintf("Don't know how to %s", commandName[1:])
 	}
+
+	event := gameon.Message{
+		Direction: "player",
+		Recipient: command.UserID,
+		Payload: jsonMarshal(gameon.Event{
+			Type: "event",
+			Content: map[string]string{
+				command.UserID: eventContent,
+			},
+		}),
+	}
+	writeResponseMessages(resp, event)
 }
 
 func (r *room) handleChat(command gameon.RoomCommand, resp http.ResponseWriter) {
-	chat := gameon.Message{
-		Direction: "player",
-		Recipient: "*",
-		Payload: jsonMarshal(gameon.Chat{
-			Type:     "chat",
-			Username: command.Username,
-			Content:  command.Content,
-		}),
+	var msg gameon.Message
+
+	dirty := r.profanityChecker.Check(command.Content)
+	if dirty {
+		msg = gameon.Message{
+			Direction: "player",
+			Recipient: command.UserID,
+			Payload: jsonMarshal(gameon.Event{
+				Type: "event",
+				Content: map[string]string{
+					command.UserID: "Pardon your french!",
+				},
+			}),
+		}
+	} else {
+		msg = gameon.Message{
+			Direction: "player",
+			Recipient: "*",
+			Payload: jsonMarshal(gameon.Chat{
+				Type:     "chat",
+				Username: command.Username,
+				Content:  command.Content,
+			}),
+		}
 	}
 
-	writeResponseMessages(resp, chat)
+	writeResponseMessages(resp, msg)
 }
 
 func writeResponseMessages(resp http.ResponseWriter, messages ...gameon.Message) {

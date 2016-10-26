@@ -9,7 +9,7 @@ import (
 func main() {
 	logrus.Infof("Starting room service")
 
-	room := newChatRoom()
+	room := newRoom()
 
 	http.HandleFunc("/hello", room.hello)
 	http.HandleFunc("/goodbye", room.goodbye)
