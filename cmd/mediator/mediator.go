@@ -153,7 +153,7 @@ func (m *mediator) handleHello(hello *gameon.Hello, session *Session) {
 func (m *mediator) handleGoodbye(goodbye *gameon.Goodbye, session *Session) {
 	defer session.Close()
 
-	resp, err := m.room.Hello(goodbye)
+	resp, err := m.room.Goodbye(goodbye)
 	if err != nil {
 		logrus.WithError(err).Errorf("Error executing 'goodbye' with room service")
 		return
