@@ -135,7 +135,7 @@ func (r *room) handleSlash(command gameon.RoomCommand, resp http.ResponseWriter)
 			break
 		}
 
-		exitID := strings.ToUpper(words[2])
+		exitID := strings.ToUpper(words[1])
 		if _, ok := exits[exitID]; !ok {
 			eventContent = "You probably don't wanna go there..."
 			break
